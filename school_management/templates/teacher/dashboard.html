@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+    <h1>Teacher Dashboard</h1>
+    <h3>Correct Marks</h3>
+    <form method="post">
+        {% csrf_token %}
+        <select name="transcript_id" class="form-control mb-2">
+            {% for transcript in transcripts %}
+                <option value="{{ transcript.id }}">{{ transcript.student.first_name }} - {{ transcript.level }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="subject" placeholder="Subject (e.g., Maths)" class="form-control mb-2">
+        <input type="number" name="new_mark" placeholder="New Mark" class="form-control mb-2">
+        <button type="submit" class="btn btn-primary">Correct</button>
+    </form>
+    <h3>Corrections History</h3>
+    <table class="table">
+        <thead><tr><th>Student</th><th>Subject</th><th>Old Mark</th><th>New Mark</th></tr></thead>
+        <tbody>
+            {% for correction in corrections %}
+                <tr>
+                    <td>{{ correction.student.first_name }}</td>
+                    <td>{{ correction.subject }}</td>
+                    <td>{{ correction.old_mark }}</td>
+                    <td>{{ correction.new_mark }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}
