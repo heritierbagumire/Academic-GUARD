@@ -33,6 +33,13 @@ INSTALLED_APPS = [
     'teacher_app',
 ]
 
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [BASE_DIR / 'assets']  # Points to root-level assets folder
+STATIC_ROOT = BASE_DIR / 'static'  # For production (optional)
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -71,8 +78,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'school_db',
-        'USER': 'your_user',
-        'PASSWORD': 'your_password',
+        'USER': 'postgres',
+        'PASSWORD': 'Fomula123!',
         'HOST': 'localhost',
         'PORT': '5432',
     }
@@ -82,10 +89,7 @@ DATABASES = {
 AUTH_USER_MODEL = 'admin_app.CustomUser'
 CRISPY_TEMPLATE_PACK = 'bootstrap4'
 
-STATIC_URL = '/static/'
-STATICFILES_DIRS = [BASE_DIR / 'assets']
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
