@@ -3,4 +3,5 @@ from . import views
 
 urlpatterns = [
     path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
+    path('preview/', views.page_preview, name='page_preview'),
 ]

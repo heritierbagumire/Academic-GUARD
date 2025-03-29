@@ -1,54 +1,596 @@
 {% extends 'base.html' %}
+
 {% block content %}
-    <h1>Admin Dashboard</h1>
-    {% if messages %}
-        {% for message in messages %}
-            <div class="alert alert-success">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-    <div class="row">
-        <div class="col-md-6">
-            <h3>Upload Transcript</h3>
-            <form method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-                <select name="student_id" class="form-control mb-2">
-                    {% for student in students %}
-                        <option value="{{ student.id }}">{{ student.first_name }} {{ student.last_name }}</option>
-                    {% endfor %}
-                </select>
-                <input type="text" name="level" placeholder="Level (e.g., O-Level)" class="form-control mb-2">
-                <input type="file" name="pdf_file" accept=".pdf" class="form-control mb-2">
-                <button type="submit" class="btn btn-primary">Upload</button>
-            </form>
-            <h3>Students ({{ total_students }})</h3>
-            <table class="table table-striped">
-                <thead><tr><th>Name</th><th>Email</th></tr></thead>
-                <tbody>
-                    {% for student in students %}
-                        <tr><td>{{ student.first_name }} {{ student.last_name }}</td><td>{{ student.email }}</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        <div class="col-md-6">
-            <h3>AI Predictions</h3>
-            <canvas id="predictionChart"></canvas>
+<div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-extrabold text-gray-800 tracking-tight">School Enrollment Dashboard</h1>
+        <div class="space-x-3">
+            <a href="{% url 'admin_dashboard' %}" class="text-gray-600 hover:text-blue-600 transition-colors duration-200">
+                <i class="fas fa-tachometer-alt"></i> Dashboard
+            </a>
+            <a href="{% url 'page_preview' %}" class="text-gray-600 hover:text-blue-600 transition-colors duration-200">
+                <i class="fas fa-eye"></i> Page Preview
+            </a>
         </div>
     </div>
-    <script>
-        var ctx = document.getElementById('predictionChart').getContext('2d');
-        var chart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: [{% for student in students %}'{{ student.first_name }}',{% endfor %}],
-                datasets: [{
-                    label: 'Predicted Performance',
-                    data: {{ predictions|safe }},
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 1
-                }]
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <h3 class="text-sm font-semibold text-gray-500 mb-2">Total Students</h3>
+            <p class="text-4xl font-bold text-gray-800">{{ total_students }}</p>
+            <p class="text-xs text-gray-400 mt-1">Currently enrolled students</p>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <h3 class="text-sm font-semibold text-gray-500 mb-2">New Enrollments</h3>
+            <p class="text-4xl font-bold text-gray-800">{{ new_students }}</p>
+            <p class="text-xs text-gray-400 mt-1">This academic year</p>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <h3 class="text-sm font-semibold text-gray-500 mb-2">Graduating Students</h3>
+            <p class="text-4xl font-bold text-gray-800">{{ graduating_students }}</p>
+            <p class="text-xs text-gray-400 mt-1">Expected this year</p>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <h3 class="text-sm font-semibold text-gray-500 mb-2">Retention Rate</h3>
+            <p class="text-4xl font-bold text-gray-800">{{ retention_rate }}%</p>
+            <p class="text-xs text-gray-400 mt-1">Year-over-year</p>
+        </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <!-- Pie Chart: Student Distribution -->
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Student Distribution</h3>
+            <div class="mb-4">
+                <label for="yearSelect" class="block text-sm font-medium text-gray-700">Select Year:</label>
+                <select id="yearSelect" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    {% for year in historical_years|safe %}
+                        <option value="{{ year }}">{{ year }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <canvas id="pieChart" height="100" class="mb-6"></canvas>
+            <!-- Pie Chart Data Table -->
+            <div>
+                <h4 class="text-md font-semibold text-gray-800 mb-3">Student Distribution Data</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-gray-600 border-separate border-spacing-0">
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200 rounded-tl-xl">Year</th>
+                                <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200">Current Students</th>
+                                <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200">New Students</th>
+                                <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200 rounded-tr-xl">Graduating Students</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for year, data in pie_chart_data_by_year.items %}
+                            <tr class="hover:bg-gray-50 transition-colors duration-200">
+                                <td class="p-3 border-b border-gray-200 {% if forloop.last %}rounded-bl-xl{% endif %}">{{ year }}</td>
+                                <td class="p-3 border-b border-gray-200">{{ data.values.0 }}</td>
+                                <td class="p-3 border-b border-gray-200">{{ data.values.1 }}</td>
+                                <td class="p-3 border-b border-gray-200 {% if forloop.last %}rounded-br-xl{% endif %}">{{ data.values.2 }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <!-- Bar Chart: New vs Graduating Students -->
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">New vs Graduating Students</h3>
+            <canvas id="barChart" height="100" class="mb-6"></canvas>
+            <!-- Bar Chart Data Table -->
+            <div>
+                <h4 class="text-md font-semibold text-gray-800 mb-3">New vs Graduating Students Data</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-gray-600 border-separate border-spacing-0">
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200 rounded-tl-xl">Year</th>
+                                <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200">New Students</th>
+                                <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200 rounded-tr-xl">Graduating Students</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in bar_chart_data_list %}
+                            <tr class="hover:bg-gray-50 transition-colors duration-200">
+                                <td class="p-3 border-b border-gray-200 {% if forloop.last %}rounded-bl-xl{% endif %}">{{ entry.year }}</td>
+                                <td class="p-3 border-b border-gray-200">{{ entry.new_students }}</td>
+                                <td class="p-3 border-b border-gray-200 {% if forloop.last %}rounded-br-xl{% endif %}">{{ entry.graduating_students }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <!-- Enrollment Projections -->
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Enrollment Projections</h3>
+            {% if predictions %}
+                <!-- Prediction Stats Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-blue-50 p-4 rounded-lg shadow hover:shadow-md transition-shadow duration-200">
+                        <h4 class="text-sm font-semibold text-blue-800">1-Year Projection</h4>
+                        <p class="text-2xl font-bold text-blue-800">{{ detailed_predictions.year_1.total_students }}</p>
+                        <p class="text-xs text-blue-600">
+                            {{ detailed_predictions.year_1.total_students_change }}% from last year
+                        </p>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg shadow hover:shadow-md transition-shadow duration-200">
+                        <h4 class="text-sm font-semibold text-green-800">3-Year Projection</h4>
+                        <p class="text-2xl font-bold text-green-800">{{ detailed_predictions.year_3.total_students }}</p>
+                        <p class="text-xs text-green-600">
+                            {{ detailed_predictions.year_3.total_students_change }}% from last year
+                        </p>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg shadow hover:shadow-md transition-shadow duration-200">
+                        <h4 class="text-sm font-semibold text-purple-800">5-Year Projection</h4>
+                        <p class="text-2xl font-bold text-purple-800">{{ detailed_predictions.year_5.total_students }}</p>
+                        <p class="text-xs text-purple-600">
+                            {{ detailed_predictions.year_5.total_students_change }}% from last year
+                        </p>
+                    </div>
+                    <div class="bg-orange-50 p-4 rounded-lg shadow hover:shadow-md transition-shadow duration-200">
+                        <h4 class="text-sm font-semibold text-orange-800">Growth Rate</h4>
+                        <p class="text-2xl font-bold text-orange-800">{{ growth_rate_5_years }}%</p>
+                        <p class="text-xs text-orange-600">Over 5 years</p>
+                    </div>
+                </div>
+                <!-- Line Graph: Enrollment Projections -->
+                <canvas id="enrollmentChart" height="100" class="mb-6"></canvas>
+                <!-- Detailed Prediction Table -->
+                <div>
+                    <h4 class="text-md font-semibold text-gray-800 mb-3">Detailed Prediction</h4>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-gray-600 border-separate border-spacing-0">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200 rounded-tl-xl">Category</th>
+                                    <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200">Current</th>
+                                    <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200">Year 1</th>
+                                    <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200">Year 3</th>
+                                    <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200 rounded-tr-xl">Year 5</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="hover:bg-gray-50 transition-colors duration-200">
+                                    <td class="p-3 border-b border-gray-200">Total Students</td>
+                                    <td class="p-3 border-b border-gray-200">{{ detailed_predictions.current.total_students }}</td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_1.total_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_1.total_students_change }}%)</span>
+                                    </td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_3.total_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_3.total_students_change }}%)</span>
+                                    </td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_5.total_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_5.total_students_change }}%)</span>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-gray-50 transition-colors duration-200">
+                                    <td class="p-3 border-b border-gray-200">New Students</td>
+                                    <td class="p-3 border-b border-gray-200">{{ detailed_predictions.current.new_students }}</td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_1.new_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_1.new_students_change }}%)</span>
+                                    </td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_3.new_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_3.new_students_change }}%)</span>
+                                    </td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_5.new_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_5.new_students_change }}%)</span>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-gray-50 transition-colors duration-200">
+                                    <td class="p-3 border-b border-gray-200">Returning Students</td>
+                                    <td class="p-3 border-b border-gray-200">{{ detailed_predictions.current.returning_students }}</td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_1.returning_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_1.returning_students_change }}%)</span>
+                                    </td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_3.returning_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_3.returning_students_change }}%)</span>
+                                    </td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_5.returning_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_5.returning_students_change }}%)</span>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-gray-50 transition-colors duration-200">
+                                    <td class="p-3 border-b border-gray-200 rounded-bl-xl">Graduating Students</td>
+                                    <td class="p-3 border-b border-gray-200">{{ detailed_predictions.current.graduating_students }}</td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_1.graduating_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_1.graduating_students_change }}%)</span>
+                                    </td>
+                                    <td class="p-3 border-b border-gray-200">
+                                        {{ detailed_predictions.year_3.graduating_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_3.graduating_students_change }}%)</span>
+                                    </td>
+                                    <td class="p-3 border-b border-gray-200 rounded-br-xl">
+                                        {{ detailed_predictions.year_5.graduating_students }}
+                                        <span class="text-xs text-gray-500">({{ detailed_predictions.year_5.graduating_students_change }}%)</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% else %}
+                <p class="text-sm text-gray-600 italic">Generate predictions to see enrollment projections.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Prediction Form and How It Works -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Generate Predictions -->
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Generate Predictions</h3>
+            <p class="text-sm text-gray-600 mb-4">Adjust parameters to see how they affect future enrollment predictions.</p>
+            <form method="post">
+                {% csrf_token %}
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Current Student Count</label>
+                        <input type="number" name="current_student_count" value="{{ current_student_count }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">New Students Per Year</label>
+                        <input type="number" name="new_students_per_year" value="{{ new_students_per_year }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Retention Rate (%)</label>
+                        <input type="number" name="retention_rate" value="{{ retention_rate_percent }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Graduation Rate (%)</label>
+                        <input type="number" name="graduation_rate" value="{{ graduation_rate }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700">Expected Growth Rate: {{ expected_growth_rate }}%</label>
+                    <input type="range" name="expected_growth_rate" min="0" max="10" value="{{ expected_growth_rate }}" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors duration-200">Generate Predictions</button>
+            </form>
+        </div>
+        <!-- How It Works -->
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">How It Works</h3>
+            <p class="text-sm text-gray-600 mb-4">This enrollment prediction tool uses historical data and current student statistics to forecast future enrollment patterns.</p>
+            <h4 class="text-md font-semibold text-gray-800 mb-2">Key Factors Considered:</h4>
+            <ul class="list-disc pl-5 text-sm text-gray-600 mb-4">
+                <li>Current student enrollment numbers</li>
+                <li>Historical retention and graduation rates</li>
+                <li>New student enrollment trends</li>
+                <li>Expected growth projections</li>
+            </ul>
+            <!-- R² Score Table -->
+            <h4 class="text-md font-semibold text-gray-800 mb-3">Model Accuracy</h4>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-gray-600 border-separate border-spacing-0">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200 rounded-tl-xl">Metric</th>
+                            <th class="p-3 text-left font-semibold text-gray-700 border-b border-gray-200 rounded-tr-xl">Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="hover:bg-gray-50 transition-colors duration-200">
+                            <td class="p-3 border-b border-gray-200 rounded-bl-xl">R² Score</td>
+                            <td class="p-3 border-b border-gray-200 rounded-br-xl">{{ r2_score }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-sm text-gray-600 mt-4">The R² score indicates the accuracy of the linear regression model used for enrollment predictions. A higher score (closer to 1) means better fit.</p>
+            <p class="text-sm text-gray-600 mt-2">Adjust the parameters in the prediction form to see how different factors affect future enrollment numbers for 1-year, 3-year, and 5-year projections.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js Script -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Pie Chart: Student Distribution (Interactive with Year Selection)
+const pieCtx = document.getElementById('pieChart').getContext('2d');
+const pieDataByYear = {{ pie_chart_data_by_year|safe }};
+let pieChart = new Chart(pieCtx, {
+    type: 'pie',
+    data: {
+        labels: pieDataByYear['{{ historical_years|last }}'].labels,
+        datasets: [{
+            data: pieDataByYear['{{ historical_years|last }}'].values,
+            backgroundColor: ['#3B82F6', '#EF4444', '#FBBF24'],
+            borderWidth: 1,
+            borderColor: '#fff',
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'top',
+                labels: {
+                    font: {
+                        size: 12,
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#374151',
+                },
+            },
+            tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleFont: { family: 'Inter, sans-serif' },
+                bodyFont: { family: 'Inter, sans-serif' },
+                callbacks: {
+                    label: function(context) {
+                        let label = context.label || '';
+                        if (label) {
+                            label += ': ';
+                        }
+                        label += context.raw;
+                        return label;
+                    }
+                }
+            },
+        },
+        animation: {
+            animateScale: true,
+            animateRotate: true,
+            duration: 1000,
+            easing: 'easeInOutQuad',
+        },
+    }
+});
+
+// Update pie chart when year changes
+document.getElementById('yearSelect').addEventListener('change', function() {
+    const selectedYear = this.value;
+    pieChart.data.labels = pieDataByYear[selectedYear].labels;
+    pieChart.data.datasets[0].data = pieDataByYear[selectedYear].values;
+    pieChart.update();
+});
+
+// Bar Chart: New vs Graduating Students
+const barCtx = document.getElementById('barChart').getContext('2d');
+const barData = {{ bar_chart_data|safe }};
+new Chart(barCtx, {
+    type: 'bar',
+    data: {
+        labels: barData.years,
+        datasets: [
+            {
+                label: 'New Students',
+                data: barData.new_students,
+                backgroundColor: '#3B82F6',
+                borderColor: '#2563EB',
+                borderWidth: 1,
+                borderRadius: 4,
+                barThickness: 20,
+            },
+            {
+                label: 'Graduating Students',
+                data: barData.graduating_students,
+                backgroundColor: '#EF4444',
+                borderColor: '#DC2626',
+                borderWidth: 1,
+                borderRadius: 4,
+                barThickness: 20,
             }
-        });
-    </script>
+        ]
+    },
+    options: {
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: 'Number of Students',
+                    font: {
+                        size: 12,
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#374151',
+                },
+                grid: {
+                    color: 'rgba(0, 0, 0, 0.05)',
+                },
+                ticks: {
+                    font: {
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#6B7280',
+                },
+            },
+            x: {
+                title: {
+                    display: true,
+                    text: 'Year',
+                    font: {
+                        size: 12,
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#374151',
+                },
+                grid: {
+                    display: false,
+                },
+                ticks: {
+                    font: {
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#6B7280',
+                },
+            },
+        },
+        plugins: {
+            legend: {
+                position: 'top',
+                labels: {
+                    font: {
+                        size: 12,
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#374151',
+                    usePointStyle: true,
+                },
+            },
+            tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleFont: { family: 'Inter, sans-serif' },
+                bodyFont: { family: 'Inter, sans-serif' },
+            },
+        },
+        animation: {
+            duration: 1000,
+            easing: 'easeInOutQuad',
+        },
+    }
+});
+
+// Line Graph: Enrollment Projections (with Shaded Areas)
+const lineCtx = document.getElementById('enrollmentChart').getContext('2d');
+const historicalYears = {{ historical_years|safe }};
+const historicalStudents = {{ historical_students|safe }};
+const predictions = {{ predictions|default:'null'|safe }};
+
+let futureYears = [];
+let futureStudents = [];
+if (predictions) {
+    futureYears = predictions.years;
+    futureStudents = predictions.values;
+}
+
+new Chart(lineCtx, {
+    type: 'line',
+    data: {
+        labels: [...historicalYears, ...futureYears],
+        datasets: [
+            {
+                label: 'Actual Students',
+                data: [...historicalStudents, ...Array(futureYears.length).fill(null)],
+                borderColor: '#3B82F6',
+                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+            },
+            {
+                label: '1-Year Prediction',
+                data: [...Array(historicalYears.length).fill(null), ...futureStudents.slice(0, 1), ...Array(futureYears.length - 1).fill(null)],
+                borderColor: '#10B981',
+                backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                fill: true,
+                borderDash: [5, 5],
+                tension: 0.3,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+            },
+            {
+                label: '3-Year Prediction',
+                data: [...Array(historicalYears.length).fill(null), ...futureStudents.slice(0, 3), ...Array(futureYears.length - 3).fill(null)],
+                borderColor: '#06B6D4',
+                backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                fill: true,
+                borderDash: [5, 5],
+                tension: 0.3,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+            },
+            {
+                label: '5-Year Prediction',
+                data: [...Array(historicalYears.length).fill(null), ...futureStudents],
+                borderColor: '#8B5CF6',
+                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                fill: true,
+                borderDash: [5, 5],
+                tension: 0.3,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+            },
+        ],
+    },
+    options: {
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: 'Number of Students',
+                    font: {
+                        size: 12,
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#374151',
+                },
+                grid: {
+                    color: 'rgba(0, 0, 0, 0.05)',
+                },
+                ticks: {
+                    font: {
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#6B7280',
+                },
+            },
+            x: {
+                title: {
+                    display: true,
+                    text: 'Year',
+                    font: {
+                        size: 12,
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#374151',
+                },
+                grid: {
+                    display: false,
+                },
+                ticks: {
+                    font: {
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#6B7280',
+                },
+            },
+        },
+        plugins: {
+            legend: {
+                position: 'top',
+                labels: {
+                    usePointStyle: true,
+                    font: {
+                        size: 12,
+                        family: 'Inter, sans-serif',
+                    },
+                    color: '#374151',
+                },
+            },
+            tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleFont: { family: 'Inter, sans-serif' },
+                bodyFont: { family: 'Inter, sans-serif' },
+            },
+        },
+        animation: {
+            duration: 1000,
+            easing: 'easeInOutQuad',
+        },
+    }
+});
+</script>
 {% endblock %}
